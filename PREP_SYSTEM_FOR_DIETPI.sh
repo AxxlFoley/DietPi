@@ -58,6 +58,7 @@
 	# - Meveric: https://github.com/MichaIng/DietPi/issues/1285#issuecomment-355759321
 	[[ -f '/etc/apt/sources.list.d/deb-multimedia.list' ]] && rm /etc/apt/sources.list.d/deb-multimedia.list
 	[[ -f '/etc/apt/preferences.d/deb-multimedia-pin-99' ]] && rm /etc/apt/preferences.d/deb-multimedia-pin-99
+	[[ -f '/etc/apt/preferences.d/backports' ]] && rm /etc/apt/preferences.d/backports
 	# - OMV: https://dietpi.com/phpbb/viewtopic.php?f=11&t=2772
 	[[ -f '/etc/apt/sources.list.d/openmediavault.list' ]] && rm /etc/apt/sources.list.d/openmediavault.list
 
@@ -82,14 +83,14 @@
 	# Check for/Install APT packages required for this script to:
 	aAPT_PREREQS=(
 
-		'apt-transport-https' # Allows HTTPS sources for APT (not required since Buster)
 		'wget' # Download DietPi-Globals...
 		'ca-certificates' # ...via HTTPS
-		'unzip' # Unzip DietPi code
 		'locales' # Set en_GB.UTF-8 locale
 		'whiptail' # G_WHIP
 
 	)
+	# - Pre-Buster: Support HTTPS sources for APT
+	grep -qE '(jessie|stretch)' /etc/os-release && aAPT_PREREQS+=('apt-transport-https')
 
 	for i in "${aAPT_PREREQS[@]}"
 	do
@@ -597,13 +598,13 @@ Currently installed: $G_DISTRO_NAME (ID: $G_DISTRO)"; then
 		G_DIETPI-NOTIFY 2 '-----------------------------------------------------------------------------------'
 		#------------------------------------------------------------------------------------------------
 
-		local url="https://github.com/$G_GITOWNER/DietPi/archive/$G_GITBRANCH.zip"
+		local url="https://github.com/$G_GITOWNER/DietPi/archive/$G_GITBRANCH.tar.gz"
 		G_CHECK_URL "$url"
-		G_RUN_CMD wget "$url" -O package.zip
+		l_message='Downloading DietPi sourcecode' G_RUN_CMD curl -sSL "$url" -o package.tar.gz
 
 		[[ -d DietPi-$G_GITBRANCH ]] && l_message='Cleaning previously extracted files' G_RUN_CMD rm -R "DietPi-$G_GITBRANCH"
-		l_message='Extracting DietPi sourcecode' G_RUN_CMD unzip package.zip
-		rm package.zip
+		l_message='Extracting DietPi sourcecode' G_RUN_CMD tar xf package.tar.gz
+		rm package.tar.gz
 
 		[[ -d '/boot' ]] || l_message='Creating /boot' G_RUN_CMD mkdir -p /boot
 
@@ -733,7 +734,6 @@ _EOF_
 			'parted'		# partprobe + drive partitioning, required by DietPi-Drive_Manager
 			'procps'		# "kill", "ps", "pgrep", "sysctl", used by several DietPi scripts
 			'psmisc'		# "killall", used by several DietPi scripts
-			'resolvconf'		# Network nameserver handler + depandant for "ifupdown" (network interface handler) => "iproute2" ("ip" command)
 			'sudo'			# Root permission wrapper for users within /etc/sudoers(.d/)
 			'systemd-sysv'		# Includes systemd and additional commands: "poweroff", "shutdown" etc.
 			'tzdata'		# Time zone data for system clock, auto summer/winter time adjustment
@@ -1016,7 +1016,7 @@ _EOF_
 		[[ -d '/usr/src' ]] && rm -vRf /usr/src/{,.??,.[^.]}*
 
 		# - root/home
-		rm -Rfv /{root,home/*}/.{cache,local,config,gnupg,viminfo,dbus,gconf,nano}
+		rm -Rfv /{root,home/*}/.{cache,local,config,gnupg,viminfo,dbus,gconf,nano,vim}
 
 		# - Documentation dirs: https://github.com/MichaIng/DietPi/issues/3259
 		#[[ -d '/usr/share/man' ]] && rm -vR /usr/share/man
@@ -1079,7 +1079,6 @@ _EOF_
 			haveged
 			hwclock.sh
 			networking
-			resolvconf
 			udev
 			cron
 			console-setup.sh
@@ -1141,6 +1140,7 @@ _EOF_
 		[[ -f '/usr/local/sbin/setup-odroid' ]] && rm -v /usr/local/sbin/setup-odroid
 		[[ -d '/root/scripts' ]] && rm -R /root/scripts
 		[[ -f '/root/resize--log.txt' ]] && rm /root/resize--log.txt
+		rm -fv /installed-packages*.txt
 
 		# - RPi specific: https://github.com/MichaIng/DietPi/issues/1631#issuecomment-373965406
 		[[ -f '/etc/profile.d/wifi-country.sh' ]] && rm -v /etc/profile.d/wifi-country.sh
@@ -1250,9 +1250,10 @@ _EOF_
 		echo 'ssh.dietpi.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDE6aw3r6aOEqendNu376iiCHr9tGBIWPgfrLkzjXjEsHGyVSUFNnZt6pftrDeK7UX+qX4FxOwQlugG4fymOHbimRCFiv6cf7VpYg1Ednquq9TLb7/cIIbX8a6AuRmX4fjdGuqwmBq3OG7ZksFcYEFKt5U4mAJIaL8hXiM2iXjgY02LqiQY/QWATsHI4ie9ZOnwrQE+Rr6mASN1BVFuIgyHIbwX54jsFSnZ/7CdBMkuAd9B8JkxppWVYpYIFHE9oWNfjh/epdK8yv9Oo6r0w5Rb+4qaAc5g+RAaknHeV6Gp75d2lxBdCm5XknKKbGma2+/DfoE8WZTSgzXrYcRlStYN' > /root/.ssh/known_hosts
 
 		G_DIETPI-NOTIFY 2 'Configuring DNS nameserver:'
-		echo 'nameserver 9.9.9.9' > /etc/resolvconf/run/resolv.conf # Apply generic functional DNS nameserver, updated on next service start
-		ln -sfv /etc/resolvconf/run/resolv.conf /etc/resolv.conf # Update symlink, in case it was manually removed
-		rm -fv /etc/resolvconf/resolv.conf.d/{original,tail} # Remove obsolete original and appendix files
+		# Failsafe: Assure that /etc/resolv.conf is not a symlink and disable systemd-resolved
+		systemctl disable --now systemd-resolved
+		rm -fv /etc/resolv.conf
+		echo 'nameserver 9.9.9.9' > /etc/resolv.conf # Apply generic functional DNS nameserver, updated on next service start
 
 		# ifupdown starts the daemon outside of systemd, the enabled systemd unit just thows an error on boot due to missing dbus and with dbus might interfere with ifupdown
 		systemctl disable wpa_supplicant 2> /dev/null && G_DIETPI-NOTIFY 2 'Disabled non-required wpa_supplicant systemd unit'
@@ -1278,7 +1279,7 @@ iface eth0 inet dhcp
 address 192.168.0.100
 netmask 255.255.255.0
 gateway 192.168.0.1
-#dns-nameservers 8.8.8.8 8.8.4.4
+#dns-nameservers 9.9.9.9 149.112.112.112
 
 # WiFi
 #allow-hotplug wlan0
@@ -1288,7 +1289,7 @@ netmask 255.255.255.0
 gateway 192.168.0.1
 wireless-power off
 wpa-conf /etc/wpa_supplicant/wpa_supplicant.conf
-#dns-nameservers 8.8.8.8 8.8.4.4
+#dns-nameservers 9.9.9.9 149.112.112.112
 _EOF_
 		G_ERROR_HANDLER_EXITCODE=$?
 		G_ERROR_HANDLER
